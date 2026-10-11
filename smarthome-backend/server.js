@@ -2,7 +2,6 @@ const mqtt = require('mqtt');
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getDatabase } = require('firebase-admin/database');
 
-// 1. Cấu hình kết nối Firebase Realtime Database
 const serviceAccount = require("./firebase-key.json");
 
 initializeApp({
@@ -11,38 +10,57 @@ initializeApp({
 });
 
 const db = getDatabase();
-
-// 2. Kết nối tới Mosquitto MQTT Broker (Dùng IP Hotspot 192.168.137.1)
 const mqttClient = mqtt.connect('mqtt://192.168.137.1:1883');
 
 mqttClient.on('connect', () => {
   console.log('Node.js Server đã kết nối thành công tới MQTT Broker!');
   
-  // Đăng ký nhận dữ liệu từ Topic của DHT11
-  mqttClient.subscribe('home/sensors/dht11', (err) => {
-    if (!err) {
-      console.log('Đã subscribe topic: home/sensors/dht11');
-    }
+  // Subscribe topic dữ liệu cảm biến nhà bếp
+  mqttClient.subscribe('home/sensors/kitchen_data', (err) => {
+    if (!err) console.log('Đã subscribe topic: home/sensors/kitchen_data');
   });
 });
 
-// 3. Lắng nghe dữ liệu từ MQTT gửi về và lưu lên Firebase
-mqttClient.on('message', async (topic, message) => {
-  if (topic === 'home/sensors/dht11') {
-    try {
-      const data = JSON.parse(message.toString());
-      console.log("Bắt được gói tin từ ESP32:", data);
+// LẮNG NGHE LỆNH ĐIỀU KHIỂN TỪ FIREBASE ĐỂ BẮN XUỐNG MQTT CHO ESP32
+db.ref('controls/kitchen').on('value', (snapshot) => {
+  const controls = snapshot.val();
+  if (controls) {
+    if (controls.led) {
+      mqttClient.publish('home/node2/control_led', controls.led);
+      console.log(`[MQTT Send] home/node2/control_led -> ${controls.led}`);
+    }
+    if (controls.pump) {
+      mqttClient.publish('home/node2/control_pump', controls.pump);
+      console.log(`[MQTT Send] home/node2/control_pump -> ${controls.pump}`);
+    }
+    if (controls.escapeDoor) {
+      mqttClient.publish('home/node2/control_escape_door', controls.escapeDoor);
+      console.log(`[MQTT Send] home/node2/control_escape_door -> ${controls.escapeDoor}`);
+    }
+    if (controls.buzzer) {
+      mqttClient.publish('home/node2/control_buzzer', controls.buzzer);
+      console.log(`[MQTT Send] home/node2/control_buzzer -> ${controls.buzzer}`);
+    }
+  }
+});
 
-      // Lưu/Cập nhật dữ liệu vào Node 'sensors/dht11' trên Firebase
-      await db.ref('sensors/dht11').set({
-        temperature: data.temp,
-        humidity: data.humid,
+mqttClient.on('message', async (topic, message) => {
+  try {
+    const data = JSON.parse(message.toString());
+    console.log(`Bắt được gói tin từ [${topic}]:`, data);
+
+    if (topic === 'home/sensors/kitchen_data') {
+      await db.ref('sensors/kitchen').set({
+        temperature: data.temperature,
+        humidity: data.humidity,
+        smoke: data.smoke,
+        flame: data.flame,
+        alarm: data.alarm,
         updatedAt: Date.now()
       });
-
-      console.log("Đã cập nhật thành công lên Firebase Realtime Database!");
-    } catch (error) {
-      console.error("Lỗi ghi dữ liệu hoặc giải mã JSON:", error);
+      console.log("Đã đẩy dữ liệu Nhà Bếp lên Firebase thành công!");
     }
+  } catch (error) {
+    console.error("Lỗi xử lý dữ liệu MQTT:", error);
   }
 });
