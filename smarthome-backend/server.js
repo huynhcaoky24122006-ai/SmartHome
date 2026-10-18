@@ -14,34 +14,45 @@ const mqttClient = mqtt.connect('mqtt://192.168.137.1:1883');
 
 mqttClient.on('connect', () => {
   console.log('Node.js Server đã kết nối thành công tới MQTT Broker!');
-  
-  // Subscribe topic dữ liệu cảm biến nhà bếp
   mqttClient.subscribe('home/sensors/kitchen_data', (err) => {
     if (!err) console.log('Đã subscribe topic: home/sensors/kitchen_data');
   });
 });
 
-// LẮNG NGHE LỆNH ĐIỀU KHIỂN TỪ FIREBASE ĐỂ BẮN XUỐNG MQTT CHO ESP32
-db.ref('controls/kitchen').on('value', (snapshot) => {
-  const controls = snapshot.val();
-  if (controls) {
-    if (controls.led) {
-      mqttClient.publish('home/node2/control_led', controls.led);
-      console.log(`[MQTT Send] home/node2/control_led -> ${controls.led}`);
-    }
-    if (controls.pump) {
-      mqttClient.publish('home/node2/control_pump', controls.pump);
-      console.log(`[MQTT Send] home/node2/control_pump -> ${controls.pump}`);
-    }
-    if (controls.escapeDoor) {
-      mqttClient.publish('home/node2/control_escape_door', controls.escapeDoor);
-      console.log(`[MQTT Send] home/node2/control_escape_door -> ${controls.escapeDoor}`);
-    }
-    if (controls.buzzer) {
-      mqttClient.publish('home/node2/control_buzzer', controls.buzzer);
-      console.log(`[MQTT Send] home/node2/control_buzzer -> ${controls.buzzer}`);
-    }
-  }
+mqttClient.on('error', (err) => {
+  console.error('Lỗi MQTT:', err.message);
+});
+
+// Ánh xạ key trên Firebase -> topic MQTT
+const COMMAND_TOPICS = {
+  led: 'home/node2/control_led',
+  pump: 'home/node2/control_pump',
+  buzzer: 'home/node2/control_buzzer',
+};
+
+// Bỏ qua dữ liệu cũ đã lưu sẵn lúc server khởi động, chỉ gửi lệnh MỚI
+let ready = false;
+
+function handleControl(snapshot) {
+  if (!ready) return;
+
+  const topic = COMMAND_TOPICS[snapshot.key];
+  if (!topic) return;
+
+  const val = snapshot.val();
+  const cmd = (val && typeof val === 'object') ? val.cmd : val;
+  if (!cmd) return;
+
+  mqttClient.publish(topic, String(cmd));
+  console.log(`[MQTT Send] ${topic} -> ${cmd}`);
+}
+
+const controlsRef = db.ref('controls/kitchen');
+controlsRef.on('child_added', handleControl);
+controlsRef.on('child_changed', handleControl);
+controlsRef.once('value').then(() => {
+  ready = true;
+  console.log('Sẵn sàng nhận lệnh điều khiển từ app.');
 });
 
 mqttClient.on('message', async (topic, message) => {
@@ -56,6 +67,9 @@ mqttClient.on('message', async (topic, message) => {
         smoke: data.smoke,
         flame: data.flame,
         alarm: data.alarm,
+        led: data.led ?? 0,
+        pump: data.pump ?? 0,
+        buzzer: data.buzzer ?? 0,
         updatedAt: Date.now()
       });
       console.log("Đã đẩy dữ liệu Nhà Bếp lên Firebase thành công!");
