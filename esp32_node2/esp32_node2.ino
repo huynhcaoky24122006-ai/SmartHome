@@ -1,60 +1,70 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <DHT.h>
-#include <ESP32Servo.h>
 
 // ===================== CẤU HÌNH WIFI & MQTT =====================
-const char* ssid = "Test";       // Thay bằng tên wifi hotspot laptop
-const char* password = "12345678";   // Thay bằng mật khẩu wifi
-const char* mqtt_server = "192.168.137.1";     // IP Mosquitto Broker trên laptop
+const char* ssid = "Test";
+const char* password = "12345678";
+const char* mqtt_server = "192.168.137.1";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// ===================== KHAI BÁO CHÂN & BIẾN CŨ =====================
+// ===================== KHAI BÁO CHÂN & BIẾN =====================
 #define DHTPIN 4
 #define DHTTYPE DHT11
 
-#define MQ2_PIN 34         
-#define FLAME_DO_PIN 32    
+#define MQ2_PIN 34
+#define FLAME_DO_PIN 32
 
 #define BUZZER_PIN 18
 #define RELAY_PIN 19
-#define LED_BEEP_PIN 23    
-#define SERVO_PIN 13
+#define LED_BEEP_PIN 23
 
-#define RELAY_ACTIVE_LEVEL HIGH
+// Mức kích của relay: relay của bạn kích mức LOW
+#define RELAY_ACTIVE_LEVEL LOW
 const int RELAY_ON  = RELAY_ACTIVE_LEVEL;
 const int RELAY_OFF = (RELAY_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
 
-const int MQ2_ON_THRESHOLD  = 2200;                
-const int MQ2_OFF_THRESHOLD = 2000;                
-const unsigned long MQ2_WARMUP_TIME = 30000;      
+// Mức sáng của đèn: đèn của bạn sáng khi chân ở mức HIGH
+#define LED_ACTIVE_LEVEL HIGH
+const int LED_ON_LEVEL  = LED_ACTIVE_LEVEL;
+const int LED_OFF_LEVEL = (LED_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
+
+const int MQ2_ON_THRESHOLD  = 1900;
+const int MQ2_OFF_THRESHOLD = 1800;
+const unsigned long MQ2_WARMUP_TIME = 30000;
 
 const bool  USE_TEMP_ALARM     = true;
-const float TEMP_ON_THRESHOLD  = 50.0;            
-const float TEMP_OFF_THRESHOLD = 45.0;            
+const float TEMP_ON_THRESHOLD  = 32.0;
+const float TEMP_OFF_THRESHOLD = 30.0;
 
-const unsigned long HOLD_TIME       = 10000;      
-const unsigned long SENSOR_INTERVAL = 200;        
-const unsigned long DHT_INTERVAL    = 2000;       
-const unsigned long PRINT_INTERVAL  = 1000;       
-const unsigned long MQTT_PUBLISH_INTERVAL = 3000; // Gửi dữ liệu lên MQTT mỗi 3 giây
+const unsigned long HOLD_TIME             = 10000;
+const unsigned long SENSOR_INTERVAL       = 200;
+const unsigned long DHT_INTERVAL          = 2000;
+const unsigned long MQTT_PUBLISH_INTERVAL = 3000;
+const unsigned long MQTT_RETRY_INTERVAL   = 5000;
 
 const int FLAME_CONFIRM_COUNT = 3;
 
-const int SERVO_CLOSE_ANGLE = 0;
-const int SERVO_OPEN_ANGLE  = 90;
-
 DHT dht(DHTPIN, DHTTYPE);
-Servo escapeServo;
 
 bool isAlarmTriggered = false;
-unsigned long lastDangerTime = 0;  
-unsigned long lastSensorTime = 0;
-unsigned long lastDhtTime    = 0;
-unsigned long lastPrintTime  = 0;
+bool buzzerMuted  = false;   // App tắt tiếng còi trong lúc báo động
+bool buzzerManual = false;   // App bật còi thủ công
+
+// Trạng thái thật của thiết bị (gửi lên app)
+bool ledOn    = true;
+bool pumpOn   = false;
+bool buzzerOn = false;
+
+bool publishNow = false;     // Gửi trạng thái ngay khi có thay đổi
+
+unsigned long lastDangerTime  = 0;
+unsigned long lastSensorTime  = 0;
+unsigned long lastDhtTime     = 0;
 unsigned long lastMqttPubTime = 0;
+unsigned long lastMqttRetry   = 0;
 
 int   flameLowCount = 0;
 float temperature   = 0;
@@ -63,7 +73,31 @@ bool  tempValid     = false;
 int   mq2Value      = 0;
 bool  flameDetected = false;
 
-// Hàm kết nối WiFi
+// ===================== HÀM ĐIỀU KHIỂN THIẾT BỊ =====================
+void setLed(bool on) {
+  ledOn = on;
+  digitalWrite(LED_BEEP_PIN, on ? LED_ON_LEVEL : LED_OFF_LEVEL);
+}
+
+void setPump(bool on) {
+  pumpOn = on;
+  digitalWrite(RELAY_PIN, on ? RELAY_ON : RELAY_OFF);
+}
+
+void setEmergency(bool on) {
+  if (on) {
+    buzzerMuted = false;
+    setPump(true);      // Bật máy bơm
+    setLed(false);      // Tắt đèn
+  } else {
+    buzzerMuted = false;
+    buzzerManual = false;
+    setPump(false);     // Tắt máy bơm
+  }
+  publishNow = true;
+}
+
+// ===================== WIFI (chỉ dùng lúc khởi động) =====================
 void setup_wifi() {
   delay(10);
   Serial.println();
@@ -81,56 +115,68 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
-// Hàm nhận lệnh điều khiển từ MQTT (Bật/tắt đèn, bơm, mở cửa thủ công từ App)
+// ===================== MQTT CALLBACK =====================
 void callback(char* topic, byte* payload, unsigned int length) {
   String message = "";
   for (unsigned int i = 0; i < length; i++) {
     message += (char)payload[i];
   }
-  
+
   Serial.print("MQTT Received [");
   Serial.print(topic);
   Serial.print("] ");
   Serial.println(message);
 
-  // Điều khiển đèn bếp từ xa
-  if (String(topic) == "home/node2/control_led") {
+  String t = String(topic);
+
+  if (t == "home/node2/control_led") {
+    if (message == "ON")       setLed(true);
+    else if (message == "OFF") setLed(false);
+  }
+  else if (t == "home/node2/control_pump") {
+    if (message == "ON")       setPump(true);
+    else if (message == "OFF") setPump(false);
+  }
+  else if (t == "home/node2/control_buzzer") {
     if (message == "ON") {
-      digitalWrite(LED_BEEP_PIN, LOW); 
+      buzzerManual = true;
+      buzzerMuted = false;
     } else if (message == "OFF") {
-      digitalWrite(LED_BEEP_PIN, HIGH);
+      buzzerManual = false;
+      buzzerMuted = true;
     }
   }
-  // Điều khiển máy bơm từ xa
-  else if (String(topic) == "home/node2/control_pump") {
-    if (message == "ON") digitalWrite(RELAY_PIN, RELAY_ON);
-    else if (message == "OFF") digitalWrite(RELAY_PIN, RELAY_OFF);
-  }
-  // Điều khiển cửa thoát hiểm từ xa
-  else if (String(topic) == "home/node2/control_escape_door") {
-    if (message == "OPEN") escapeServo.write(SERVO_OPEN_ANGLE);
-    else if (message == "CLOSE") escapeServo.write(SERVO_CLOSE_ANGLE);
-  }
+
+  publishNow = true;   // Báo trạng thái mới cho app ngay
 }
 
+// ===================== RECONNECT KHÔNG CHẶN LOOP =====================
 void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    String clientId = "ESP32Node2-Kitchen-";
-    clientId += String(random(0xffff), HEX);
-    
-    if (client.connect(clientId.c_str())) {
-      Serial.println("connected");
-      // Đăng ký nhận các topic điều khiển
-      client.subscribe("home/node2/control_led");
-      client.subscribe("home/node2/control_pump");
-      client.subscribe("home/node2/control_escape_door");
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
-      delay(5000);
-    }
+  unsigned long now = millis();
+  if (now - lastMqttRetry < MQTT_RETRY_INTERVAL) return;
+  lastMqttRetry = now;
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi lost, reconnecting...");
+    WiFi.disconnect();
+    WiFi.reconnect();
+    return;
+  }
+
+  Serial.print("Attempting MQTT connection...");
+  String clientId = "ESP32Node2-Kitchen-";
+  clientId += String(random(0xffff), HEX);
+
+  if (client.connect(clientId.c_str())) {
+    Serial.println("connected");
+    client.subscribe("home/node2/control_led");
+    client.subscribe("home/node2/control_pump");
+    client.subscribe("home/node2/control_buzzer");
+    publishNow = true;
+  } else {
+    Serial.print("failed, rc=");
+    Serial.print(client.state());
+    Serial.println(" retry in 5 seconds");
   }
 }
 
@@ -143,13 +189,7 @@ int readMQ2() {
   return sum / 10;
 }
 
-void setEmergency(bool on) {
-  digitalWrite(BUZZER_PIN, on ? HIGH : LOW);
-  digitalWrite(RELAY_PIN, on ? RELAY_ON : RELAY_OFF);
-  digitalWrite(LED_BEEP_PIN, on ? HIGH : LOW); // Khi báo động thì tắt đèn (hoặc tùy chỉnh)
-  escapeServo.write(on ? SERVO_OPEN_ANGLE : SERVO_CLOSE_ANGLE);
-}
-
+// ===================== SETUP =====================
 void setup() {
   Serial.begin(115200);
 
@@ -159,13 +199,10 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(LED_BEEP_PIN, OUTPUT);
 
-  digitalWrite(RELAY_PIN, RELAY_OFF);
+  digitalWrite(BUZZER_PIN, LOW);
 
-  ESP32PWM::allocateTimer(0);
-  escapeServo.setPeriodHertz(50);
-  escapeServo.attach(SERVO_PIN);
-
-  setEmergency(false); 
+  setPump(false);
+  setLed(true);
   dht.begin();
 
   setup_wifi();
@@ -175,20 +212,26 @@ void setup() {
   Serial.println("=== NODE 2 - KITCHEN MQTT READY ===");
 }
 
+// ===================== LOOP =====================
 void loop() {
   if (!client.connected()) {
     reconnect();
+  } else {
+    client.loop();
   }
-  client.loop();
 
   unsigned long now = millis();
+
+  // Còi hú liên tục khi có báo động
+  buzzerOn = (isAlarmTriggered && !buzzerMuted) || buzzerManual;
+  digitalWrite(BUZZER_PIN, buzzerOn ? HIGH : LOW);
 
   // Đọc cảm biến định kỳ
   if (now - lastSensorTime >= SENSOR_INTERVAL) {
     lastSensorTime = now;
 
     mq2Value = readMQ2();
-    bool mq2Ready = (now >= MQ2_WARMUP_TIME);  
+    bool mq2Ready = (now >= MQ2_WARMUP_TIME);
 
     if (digitalRead(FLAME_DO_PIN) == LOW) {
       if (flameLowCount < 255) flameLowCount++;
@@ -197,7 +240,6 @@ void loop() {
     }
     flameDetected = (flameLowCount >= FLAME_CONFIRM_COUNT);
 
-    // Đọc DHT11
     if (now - lastDhtTime >= DHT_INTERVAL) {
       lastDhtTime = now;
       float t = dht.readTemperature();
@@ -211,21 +253,21 @@ void loop() {
       }
     }
 
-    // Đánh giá mức độ an toàn / nguy hiểm (Edge Logic)
-    bool mq2Danger  = mq2Ready && (mq2Value > MQ2_ON_THRESHOLD);
-    bool mq2Safe    = !mq2Ready || (mq2Value < MQ2_OFF_THRESHOLD);
-    bool tempDanger = USE_TEMP_ALARM && tempValid && (temperature > TEMP_ON_THRESHOLD);
-    bool tempSafe   = !USE_TEMP_ALARM || !tempValid || (temperature < TEMP_OFF_THRESHOLD);
+    bool mq2Danger = mq2Ready && (mq2Value > MQ2_ON_THRESHOLD);
+    bool mq2Safe   = !mq2Ready || (mq2Value < MQ2_OFF_THRESHOLD);
 
-    bool danger = flameDetected || mq2Danger || tempDanger;
-    bool safe   = !flameDetected && mq2Safe && tempSafe;
+    bool fireAndHighTempDanger = flameDetected && USE_TEMP_ALARM && tempValid && (temperature > TEMP_ON_THRESHOLD);
+    bool fireAndHighTempSafe   = !flameDetected || !USE_TEMP_ALARM || !tempValid || (temperature < TEMP_OFF_THRESHOLD);
+
+    bool danger = mq2Danger || fireAndHighTempDanger;
+    bool safe   = mq2Safe && fireAndHighTempSafe;
 
     if (danger) {
-      lastDangerTime = now;  
+      lastDangerTime = now;
       if (!isAlarmTriggered) {
         isAlarmTriggered = true;
         setEmergency(true);
-        Serial.println("[CANH BAO] KICH HOAT UNG CUU KHAN CAP!");
+        Serial.println("[CANH BAO] KICH HOAT UNG CUU KHAN CAP (Phat hien khoi hoac chay lon)!");
       }
     }
     else if (safe && isAlarmTriggered) {
@@ -235,21 +277,25 @@ void loop() {
         Serial.println("[OK] Moi truong an toan, tro lai binh thuong.");
       }
     }
+  }
 
-    // Publish dữ liệu cảm biến lên MQTT định kỳ mỗi 3 giây
-    if (now - lastMqttPubTime >= MQTT_PUBLISH_INTERVAL) {
-      lastMqttPubTime = now;
+  // Publish dữ liệu + trạng thái thiết bị (mỗi 3 giây hoặc ngay khi có thay đổi)
+  if (client.connected() && (publishNow || now - lastMqttPubTime >= MQTT_PUBLISH_INTERVAL)) {
+    lastMqttPubTime = now;
+    publishNow = false;
 
-      String payload = "{";
-      payload += "\"temperature\":" + String(temperature) + ",";
-      payload += "\"humidity\":" + String(humidity) + ",";
-      payload += "\"smoke\":" + String(mq2Value) + ",";
-      payload += "\"flame\":" + String(flameDetected ? 1 : 0) + ",";
-      payload += "\"alarm\":" + String(isAlarmTriggered ? 1 : 0);
-      payload += "}";
+    String payload = "{";
+    payload += "\"temperature\":" + String(temperature) + ",";
+    payload += "\"humidity\":" + String(humidity) + ",";
+    payload += "\"smoke\":" + String(mq2Value) + ",";
+    payload += "\"flame\":" + String(flameDetected ? 1 : 0) + ",";
+    payload += "\"alarm\":" + String(isAlarmTriggered ? 1 : 0) + ",";
+    payload += "\"led\":" + String(ledOn ? 1 : 0) + ",";
+    payload += "\"pump\":" + String(pumpOn ? 1 : 0) + ",";
+    payload += "\"buzzer\":" + String(buzzerOn ? 1 : 0);
+    payload += "}";
 
-      client.publish("home/sensors/kitchen_data", payload.c_str());
-      Serial.println("-> Published Kitchen Data to MQTT");
-    }
+    client.publish("home/sensors/kitchen_data", payload.c_str());
+    Serial.println("-> Published Kitchen Data to MQTT");
   }
 }
