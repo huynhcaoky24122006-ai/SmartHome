@@ -53,11 +53,11 @@ const int MQ2_OFF_THRESHOLD = 2000;
 const unsigned long MQ2_WARMUP_TIME = 30000;
 
 const bool  USE_TEMP_ALARM     = true;
-const float TEMP_ON_THRESHOLD  = 32.0;
+const float TEMP_ON_THRESHOLD  = 35.0;
 const float TEMP_OFF_THRESHOLD = 30.0;
 
 // Ngưỡng nhiệt độ phòng khách để bật/tắt quạt
-const float FAN_ON_THRESHOLD  = 34.0;
+const float FAN_ON_THRESHOLD  = 37.0;
 const float FAN_OFF_THRESHOLD = 32.0;
 
 const unsigned long HOLD_TIME             = 10000;
