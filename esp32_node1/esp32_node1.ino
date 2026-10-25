@@ -376,7 +376,7 @@ void reconnect() {
 // ===================== SETUP =====================
 void setup() {
   Serial.begin(115200);
-
+    keypad.setDebounceTime(50);
   pinMode(LED_LIVING_PIN, OUTPUT);
   pinMode(LED_BEDROOM_PIN, OUTPUT);
   setLedLiving(false);
@@ -415,8 +415,14 @@ void loop() {
   unsigned long now = millis();
 
   // Keypad
+    static unsigned long lastKeyTime = 0;
   char k = keypad.getKey();
-  if (k) handleKey(k);
+  if (k && now - lastKeyTime > 250) {   // bỏ qua ký tự lặp trong 250ms
+    lastKeyTime = now;
+    Serial.print("Phim bam: ");
+    Serial.println(k);
+    handleKey(k);
+  }
 
   // RFID
   checkRFID();
