@@ -48,8 +48,8 @@ const int LED_OFF_LEVEL = (LED_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
 const int FAN_ON_LEVEL  = FAN_ACTIVE_LEVEL;
 const int FAN_OFF_LEVEL = (FAN_ACTIVE_LEVEL == HIGH) ? LOW : HIGH;
 
-const int MQ2_ON_THRESHOLD  = 2200;
-const int MQ2_OFF_THRESHOLD = 2000;
+const int MQ2_ON_THRESHOLD  = 1600;
+const int MQ2_OFF_THRESHOLD = 1400;
 const unsigned long MQ2_WARMUP_TIME = 30000;
 
 const bool  USE_TEMP_ALARM     = true;
@@ -57,8 +57,8 @@ const float TEMP_ON_THRESHOLD  = 35.0;
 const float TEMP_OFF_THRESHOLD = 30.0;
 
 // Ngưỡng nhiệt độ phòng khách để bật/tắt quạt
-const float FAN_ON_THRESHOLD  = 37.0;
-const float FAN_OFF_THRESHOLD = 32.0;
+const float FAN_ON_THRESHOLD  = 35.0;
+const float FAN_OFF_THRESHOLD = 30.0;
 
 const unsigned long HOLD_TIME             = 10000;
 const unsigned long SENSOR_INTERVAL       = 200;
