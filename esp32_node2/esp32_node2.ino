@@ -14,20 +14,21 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 // ===================== KHAI BÁO CHÂN & BIẾN =====================
-#define DHTPIN 4           // DHT11 nhà bếp (dùng cho báo cháy)
-#define DHT2PIN 14         // DHT11 phòng khách
+#define DHTPIN 32          // DHT11 nhà bếp (dùng cho báo cháy)
+#define DHT2PIN 33         // DHT11 phòng khách
 #define DHTTYPE DHT11
 
 #define MQ2_PIN 34
-#define FLAME_DO_PIN 32
+#define FLAME_DO_PIN 35
 
-#define BUZZER_PIN 18
-#define RELAY_PIN 19
-#define LED_BEEP_PIN 23
-#define FAN_PIN 25
+#define BUZZER_PIN 13
+#define RELAY_PIN 26       // Relay IN2 - máy bơm
+#define LED_BEEP_PIN 12
+#define FAN_PIN 25         // Relay IN1 - quạt
 
-#define OLED_SDA 21
-#define OLED_SCL 22
+#define OLED_SDA 27
+#define OLED_SCL 14
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_ADDR 0x3C
