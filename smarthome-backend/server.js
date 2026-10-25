@@ -27,6 +27,7 @@ mqttClient.on('error', (err) => {
 const COMMAND_TOPICS = {
   led: 'home/node2/control_led',
   pump: 'home/node2/control_pump',
+  fan: 'home/node2/control_fan',
   buzzer: 'home/node2/control_buzzer',
 };
 
@@ -70,6 +71,9 @@ mqttClient.on('message', async (topic, message) => {
         led: data.led ?? 0,
         pump: data.pump ?? 0,
         buzzer: data.buzzer ?? 0,
+        room_temperature: data.room_temperature ?? 0,
+        room_humidity: data.room_humidity ?? 0,
+        fan: data.fan ?? 0,
         updatedAt: Date.now()
       });
       console.log("Đã đẩy dữ liệu Nhà Bếp lên Firebase thành công!");
