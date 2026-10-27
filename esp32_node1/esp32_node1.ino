@@ -47,6 +47,7 @@ const byte AUTH_UIDS[][4] = {
   {0xDE, 0xAD, 0xBE, 0xEF},
   {0x12, 0x34, 0x56, 0x78},
   {0xE3, 0x12, 0xFF, 0x37},
+  {0x87, 0xA9, 0x87, 0x25},
 };
 const int AUTH_COUNT = sizeof(AUTH_UIDS) / sizeof(AUTH_UIDS[0]);
 
@@ -215,6 +216,21 @@ bool isAuthorized() {
     if (match) return true;
   }
   return false;
+}
+unsigned long lastRfidCheck = 0;
+
+// Kiểm tra RC522 còn sống không, nếu treo thì khởi động lại
+void rfidWatchdog() {
+  unsigned long now = millis();
+  if (now - lastRfidCheck < 3000) return;
+  lastRfidCheck = now;
+
+  byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+  if (v == 0x00 || v == 0xFF) {
+    Serial.println("[RFID] RC522 mat ket noi hoac bi treo, khoi dong lai...");
+    rfid.PCD_Init();
+    rfid.PCD_SetAntennaGain(rfid.RxGain_max);
+  }
 }
 
 void checkRFID() {
@@ -395,7 +411,9 @@ void setup() {
 
   SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI, RFID_SS);
   rfid.PCD_Init();
-
+  rfid.PCD_SetAntennaGain(rfid.RxGain_max);   // Tăng độ nhạy ăng-ten
+  Serial.print("RC522 version: 0x");
+  Serial.println(rfid.PCD_ReadRegister(MFRC522::VersionReg), HEX);
   initMPU();
 
   setup_wifi();
