@@ -442,7 +442,7 @@ void loop() {
     Serial.println(k);
     handleKey(k);
   }
-
+  rfidWatchdog();
   // RFID
   checkRFID();
 
