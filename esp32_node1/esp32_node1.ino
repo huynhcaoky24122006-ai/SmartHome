@@ -46,6 +46,7 @@ const unsigned long LOCKOUT_TIME = 30000;    // Khóa keypad 30 giây khi sai qu
 const byte AUTH_UIDS[][4] = {
   {0xDE, 0xAD, 0xBE, 0xEF},
   {0x12, 0x34, 0x56, 0x78},
+  {0xE3, 0x12, 0xFF, 0x37},
 };
 const int AUTH_COUNT = sizeof(AUTH_UIDS) / sizeof(AUTH_UIDS[0]);
 
