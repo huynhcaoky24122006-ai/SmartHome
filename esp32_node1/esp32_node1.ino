@@ -26,10 +26,10 @@ PubSubClient client(espClient);
 #define MPU_ADDR   0x68
 
 #define SERVO_MAIN_PIN 4
-#define SERVO_BED_PIN  2
+#define SERVO_BED_PIN  15
 
 #define LED_LIVING_PIN  23
-#define LED_BEDROOM_PIN 15
+#define LED_BEDROOM_PIN 2
 
 // Mức sáng của đèn
 #define LED_ACTIVE_LEVEL HIGH
