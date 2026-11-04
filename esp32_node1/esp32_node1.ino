@@ -130,6 +130,7 @@ void setLedBedroom(bool on) {
 }
 
 void openMain(bool autoClose) {
+  if (mainOpen && !mainAutoClose) autoClose = false;   // Cửa đang giữ mở thì giữ nguyên
   mainServo.write(SERVO_OPEN_ANGLE);
   mainOpen = true;
   mainAutoClose = autoClose;
@@ -165,6 +166,7 @@ void triggerQuake() {
   quakeActive = true;
   lastShakeTime = millis();
   setLedLiving(true);
+  setLedBedroom(true);
   openMain(false);     // Mở cửa chính và giữ nguyên để thoát hiểm
   openBed();
   publishEvent("earthquake");
@@ -445,7 +447,7 @@ void loop() {
   rfidWatchdog();
   // RFID
   checkRFID();
-
+  now = millis();   // Làm mới thời gian sau khi xử lý keypad/RFID
   // Cửa chính tự đóng sau khi mở bằng thẻ/mật khẩu
   if (mainOpen && mainAutoClose && now - mainOpenedAt >= DOOR_OPEN_TIME) {
     closeMain();
