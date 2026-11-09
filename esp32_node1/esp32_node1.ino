@@ -333,14 +333,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
   for (unsigned int i = 0; i < length; i++) {
     message += (char)payload[i];
   }
-
   Serial.print("MQTT Received [");
   Serial.print(topic);
   Serial.print("] ");
   Serial.println(message);
-
   String t = String(topic);
-
   if (t == "home/node1/control_led_living") {
     if (message == "ON")       setLedLiving(true);
     else if (message == "OFF") setLedLiving(false);
@@ -357,7 +354,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
     if (message == "OPEN")       openBed();
     else if (message == "CLOSE") closeBed();
   }
-
   publishNow = true;
 }
 
