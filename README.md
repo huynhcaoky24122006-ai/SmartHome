@@ -2,7 +2,7 @@
 
 Hệ thống nhà thông minh gồm các **node ESP32** điều khiển thiết bị và thu thập dữ liệu qua **MQTT**, một **backend** trung tâm xử lý và lưu trữ, và một **ứng dụng** để người dùng giám sát, điều khiển từ xa.
 
-> ⚠️ Các mục đánh dấu `TODO` cần bạn bổ sung thông tin thực tế của project (đặc biệt là Backend và App).
+> ⚠️ Các mục đánh dấu `TODO` cần bạn bổ sung thông tin thực tế của project (đặc biệt là App).
 
 ---
 
@@ -24,7 +24,13 @@ Hệ thống nhà thông minh gồm các **node ESP32** điều khiển thiết 
 - 📟 Màn hình OLED hiển thị nhiệt độ, độ ẩm phòng khách và trạng thái quạt
 - 📡 Điều khiển LED, máy bơm, quạt, còi từ xa qua MQTT; báo trạng thái mỗi 3 giây hoặc ngay khi có thay đổi
 
-**Backend / App**
+**Backend**
+- Cầu nối **MQTT ↔ Firebase Realtime Database** viết bằng Node.js
+- Nhận dữ liệu cảm biến và trạng thái từ các node qua MQTT, đẩy lên Firebase
+- Nhận lệnh điều khiển mới từ Firebase (do app ghi), gửi xuống node tương ứng qua MQTT
+- Ghi lại lịch sử sự kiện của Node 1 (quẹt thẻ, nhập mật khẩu, động đất...) lên Firebase
+
+**App**
 - `TODO`
 
 ## 🧩 Kiến trúc hệ thống
@@ -35,19 +41,28 @@ Hệ thống nhà thông minh gồm các **node ESP32** điều khiển thiết 
 └──────┬───────┘        └──────┬───────┘
        │         MQTT (1883)   │
        └───────────┬───────────┘
-                   ▼
+                   ↕
           ┌─────────────────┐
           │   MQTT Broker   │
           └────────┬────────┘
-                   ▼
-          ┌──────────────────┐
-          │ smarthome-backend │   TODO: cách backend nhận dữ liệu / lưu trữ
-          └────────┬─────────┘
-                   ▼
-          ┌─────────────────┐
-          │  SmartHomeApp   │   TODO: REST API / WebSocket
-          └─────────────────┘
+                   ↕
+          ┌───────────────────┐
+          │ smarthome-backend │   Node.js: cầu nối MQTT ↔ Firebase
+          └─────────┬─────────┘
+                    ↕
+          ┌───────────────────┐
+          │ Firebase Realtime │
+          │     Database      │
+          └─────────┬─────────┘
+                    ↕
+          ┌───────────────────┐
+          │   SmartHomeApp    │
+          └───────────────────┘
 ```
+
+**Luồng dữ liệu**
+- **Giám sát:** Node → MQTT → Backend → Firebase → App
+- **Điều khiển:** App ghi lệnh vào Firebase → Backend nhận → MQTT → Node thực thi
 
 ## 📁 Cấu trúc thư mục
 
@@ -56,7 +71,7 @@ SmartHome/
 ├── SmartHomeApp/        # Ứng dụng người dùng (TODO: Flutter / React Native / Android ...)
 ├── esp32_node1/         # Firmware node 1: cửa, RFID, keypad, cảm biến động đất
 ├── esp32_node2/         # Firmware node 2: báo cháy/khói, đo nhiệt độ, quạt, máy bơm
-├── smarthome-backend/   # Server backend (TODO: Node.js / Python ...)
+├── smarthome-backend/   # Backend Node.js: cầu nối MQTT ↔ Firebase
 └── .gitignore
 ```
 
@@ -65,7 +80,7 @@ SmartHome/
 | `SmartHomeApp` | Ứng dụng giám sát và điều khiển nhà thông minh |
 | `esp32_node1` | Firmware node 1: RFID, keypad, MPU6050, 2 servo cửa, 2 đèn |
 | `esp32_node2` | Firmware node 2: MQ-2, cảm biến lửa, 2 DHT11, OLED, relay bơm/quạt, còi |
-| `smarthome-backend` | Backend nhận dữ liệu từ node, lưu trữ và cung cấp API |
+| `smarthome-backend` | Backend Node.js (`server.js`): chuyển dữ liệu giữa MQTT và Firebase Realtime Database |
 
 ## 🛠️ Công nghệ sử dụng
 
@@ -74,9 +89,9 @@ SmartHome/
 | Vi điều khiển | ESP32 (Arduino framework) |
 | Giao thức | MQTT (broker cổng 1883) |
 | Thư viện ESP32 | `WiFi`, `PubSubClient`, `MFRC522`, `Keypad`, `ESP32Servo`, `DHT`, `Adafruit_GFX`, `Adafruit_SSD1306`, `SPI`, `Wire` |
-| Backend | `TODO` |
+| Backend | Node.js (CommonJS), thư viện `mqtt`, `firebase-admin` |
 | Ứng dụng | `TODO` |
-| Cơ sở dữ liệu | `TODO` |
+| Cơ sở dữ liệu | Firebase Realtime Database |
 
 ## 🔌 Phần cứng
 
@@ -147,7 +162,7 @@ cd SmartHome
 
 ### 2. MQTT Broker
 
-Cần một MQTT broker (ví dụ Mosquitto) chạy trên máy tính/server cùng mạng với các node, cổng `1883`.
+Cần một MQTT broker (ví dụ Mosquitto) chạy trên máy tính/server cùng mạng với các node và backend, cổng `1883`. Địa chỉ broker phải khớp với `mqtt_server` trong firmware ESP32 và địa chỉ trong `smarthome-backend/server.js`.
 
 ### 3. Firmware ESP32
 
@@ -172,11 +187,26 @@ Với Node 2: mở `esp32_node2/esp32_node2.ino`, sửa `ssid`, `password`, `mqt
 
 ### 4. Backend
 
-```bash
-cd smarthome-backend
-# TODO: lệnh cài đặt, ví dụ: npm install
-# TODO: lệnh chạy, ví dụ: npm start
-```
+Yêu cầu: **Node.js** và một project **Firebase** có bật **Realtime Database**.
+
+1. Trong Firebase Console, vào *Project settings → Service accounts → Generate new private key*, tải file JSON về và đổi tên thành `firebase-key.json`.
+2. Đặt `firebase-key.json` vào thư mục `smarthome-backend/` (**không commit file này lên GitHub**).
+3. Mở `smarthome-backend/server.js` và sửa cho khớp với hệ thống của bạn:
+
+   ```js
+   databaseURL: "https://<your-project-id>-default-rtdb.firebaseio.com"
+   const mqttClient = mqtt.connect('mqtt://<IP_MQTT_BROKER>:1883');
+   ```
+
+4. Cài thư viện và chạy:
+
+   ```bash
+   cd smarthome-backend
+   npm install
+   node server.js
+   ```
+
+Khi chạy thành công, console sẽ in `Node.js Server đã kết nối thành công tới MQTT Broker!` và `Sẵn sàng nhận lệnh điều khiển từ app.`
 
 ### 5. Ứng dụng
 
@@ -279,6 +309,39 @@ Ví dụ payload `home/sensors/kitchen_data`:
 | `led`, `pump`, `buzzer`, `fan` | Trạng thái thiết bị (1 = bật) |
 | `room_temperature`, `room_humidity` | Nhiệt độ (°C), độ ẩm (%) phòng khách |
 
+## 🗄️ Firebase Realtime Database
+
+Backend đọc/ghi các nhánh sau. App cần **đọc** `sensors` và `events`, **ghi** vào `controls`.
+
+```
+sensors/
+├── kitchen/        temperature, humidity, smoke, flame, alarm, led, pump, buzzer,
+│                   room_temperature, room_humidity, fan, updatedAt
+└── node1/          led_living, led_bedroom, main_door, bedroom_door, quake, shake, updatedAt
+events/
+└── node1/<id>/     event, ts              (mỗi sự kiện là một bản ghi mới)
+controls/
+├── kitchen/        led | pump | fan | buzzer
+└── node1/          ledLiving | ledBedroom | mainDoor | bedroomDoor
+```
+
+**Ánh xạ lệnh điều khiển (Firebase → MQTT)**
+
+| Firebase | Giá trị | MQTT topic |
+|---|---|---|
+| `controls/kitchen/led` | `ON` / `OFF` | `home/node2/control_led` |
+| `controls/kitchen/pump` | `ON` / `OFF` | `home/node2/control_pump` |
+| `controls/kitchen/fan` | `ON` / `OFF` | `home/node2/control_fan` |
+| `controls/kitchen/buzzer` | `ON` / `OFF` | `home/node2/control_buzzer` |
+| `controls/node1/ledLiving` | `ON` / `OFF` | `home/node1/control_led_living` |
+| `controls/node1/ledBedroom` | `ON` / `OFF` | `home/node1/control_led_bedroom` |
+| `controls/node1/mainDoor` | `OPEN` / `CLOSE` | `home/node1/control_main_door` |
+| `controls/node1/bedroomDoor` | `OPEN` / `CLOSE` | `home/node1/control_bedroom_door` |
+
+Lưu ý:
+- Giá trị có thể ghi trực tiếp (`"ON"`) hoặc dạng object có trường `cmd` (`{"cmd": "ON"}`).
+- Khi khởi động, backend bỏ qua các lệnh đã có sẵn trong Firebase và chỉ gửi những lệnh **mới thay đổi** sau đó.
+
 ## 🔥 Cơ chế báo cháy và điều khiển quạt (Node 2)
 
 **Báo động** được kích hoạt khi một trong hai điều kiện sau xảy ra:
@@ -306,6 +369,8 @@ Các ngưỡng này nằm ở đầu file `esp32_node2.ino` (`MQ2_ON_THRESHOLD`,
 
 - Mật khẩu keypad, UID thẻ và thông tin Wi-Fi đang đặt trực tiếp trong code. **Hãy đổi trước khi sử dụng thật** và không commit thông tin thật lên repo công khai.
 - Kết nối MQTT hiện chưa dùng tài khoản/mật khẩu hay TLS. Nếu đưa ra ngoài mạng LAN, nên bật xác thực cho broker.
+- `smarthome-backend/firebase-key.json` là khóa quản trị Firebase: **tuyệt đối không commit**, hãy thêm vào `.gitignore` (cùng `node_modules/`). Nếu lỡ đẩy lên GitHub, hãy thu hồi và tạo khóa mới trong Firebase Console.
+- Cấu hình **Firebase Security Rules** để chỉ người dùng đã đăng nhập mới đọc/ghi được `sensors`, `events` và `controls`, vì các lệnh này điều khiển cửa và thiết bị trong nhà.
 
 ## 🖼️ Hình ảnh demo
 
