@@ -2,7 +2,7 @@
 
 Hệ thống nhà thông minh gồm các **node ESP32** điều khiển thiết bị và thu thập dữ liệu qua **MQTT**, một **backend** trung tâm xử lý và lưu trữ, và một **ứng dụng** để người dùng giám sát, điều khiển từ xa.
 
-> ⚠️ Các mục đánh dấu `TODO` cần bạn bổ sung thông tin thực tế của project (đặc biệt là App).
+
 
 ---
 
