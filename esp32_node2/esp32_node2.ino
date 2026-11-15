@@ -57,8 +57,8 @@ const float TEMP_ON_THRESHOLD  = 34.0;
 const float TEMP_OFF_THRESHOLD = 32.0;
 
 // Ngưỡng nhiệt độ phòng khách để bật/tắt quạt
-const float FAN_ON_THRESHOLD  = 34.0;
-const float FAN_OFF_THRESHOLD = 32.0;
+const float FAN_ON_THRESHOLD  = 40.0;
+const float FAN_OFF_THRESHOLD = 39.0;
 
 const unsigned long HOLD_TIME             = 10000;
 const unsigned long SENSOR_INTERVAL       = 200;
