@@ -53,12 +53,12 @@ const int MQ2_OFF_THRESHOLD = 1400;
 const unsigned long MQ2_WARMUP_TIME = 30000;
 
 const bool  USE_TEMP_ALARM     = true;
-const float TEMP_ON_THRESHOLD  = 35.0;
-const float TEMP_OFF_THRESHOLD = 34.0;
+const float TEMP_ON_THRESHOLD  = 34.0;
+const float TEMP_OFF_THRESHOLD = 32.0;
 
 // Ngưỡng nhiệt độ phòng khách để bật/tắt quạt
-const float FAN_ON_THRESHOLD  = 37.0;
-const float FAN_OFF_THRESHOLD = 35.0;
+const float FAN_ON_THRESHOLD  = 40.0;
+const float FAN_OFF_THRESHOLD = 39.0;
 
 const unsigned long HOLD_TIME             = 10000;
 const unsigned long SENSOR_INTERVAL       = 200;
@@ -198,14 +198,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
   for (unsigned int i = 0; i < length; i++) {
     message += (char)payload[i];
   }
-
   Serial.print("MQTT Received [");
   Serial.print(topic);
   Serial.print("] ");
   Serial.println(message);
-
   String t = String(topic);
-
   if (t == "home/node2/control_led") {
     if (message == "ON")       setLed(true);
     else if (message == "OFF") setLed(false);
@@ -227,7 +224,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
       buzzerMuted = true;
     }
   }
-
   publishNow = true;
 }
 
